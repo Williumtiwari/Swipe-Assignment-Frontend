@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
@@ -8,6 +8,8 @@ import Modal from "react-bootstrap/Modal";
 import { BiPaperPlane, BiCloudDownload } from "react-icons/bi";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { useSelector } from "react-redux";
+import { selectItemsList } from "../redux/itemSlice";
 
 const GenerateInvoice = () => {
   html2canvas(document.querySelector("#invoiceCapture")).then((canvas) => {
@@ -27,14 +29,75 @@ const GenerateInvoice = () => {
 };
 
 const InvoiceModal = (props) => {
+  const [taxAmount, setTaxAmount] = useState("0.00");
+  const [discountAmount, setDiscountAmount] = useState("0.00");
+  const [total, setTotal] = useState("0.00");
+  console.log(props);
+
+  // console.log(props);
+  const globalItems = useSelector(selectItemsList);
+
+  // Filter items based on itemGroup
+  const filteredItems = globalItems.filter((item) =>
+    props.items.some((gitem) => gitem === item.itemId)
+  );
+
+  useEffect(() => {
+    handleCalculateTotal();
+  }, [filteredItems]);
+
+  const handleCalculateTotal = () => {
+    let subTotal = 0;
+    // Calculate subtotal based on filtered items
+    filteredItems.forEach((item) => {
+      // Convert itemPrice and itemQuantity to numbers, handle empty fields by defaulting to 0
+      const price = parseFloat(item?.itemPrice || 0);
+      const quantity = parseInt(item?.itemQuantity || 0);
+      subTotal += price * quantity;
+    });
+
+    // Convert taxRate and discountRate to numbers, handle empty fields by defaulting to 0
+    const taxRate = parseFloat(props?.info?.taxRate || 0);
+    const discountRate = parseFloat(props?.info?.discountRate || 0);
+
+    // Calculate tax amount
+    const calculatedTaxAmount = parseFloat(subTotal * (taxRate / 100)).toFixed(
+      2
+    );
+
+    // Calculate discount amount
+    const calculatedDiscountAmount = parseFloat(
+      subTotal * (discountRate / 100)
+    ).toFixed(2);
+
+    // Calculate total
+    const calculatedTotal = (
+      subTotal -
+      parseFloat(calculatedDiscountAmount) +
+      parseFloat(calculatedTaxAmount)
+    ).toFixed(2);
+    setTaxAmount(calculatedTaxAmount);
+    setDiscountAmount(calculatedDiscountAmount);
+    setTotal(calculatedTotal);
+    console.log(calculatedTaxAmount, calculatedTotal, calculatedDiscountAmount);
+  };
+
+  // console.log("filtered items",filteredItems);
+  const groupedItems = filteredItems.reduce((acc, item) => {
+    const group = item.itemGroup || "Ungrouped";
+    // console.log(group);
+    acc[group] = acc[group] || [];
+    acc[group].push(item);
+    return acc;
+  }, {});
+  // console.log("grouped",groupedItems);
   return (
     <div>
       <Modal
         show={props.showModal}
         onHide={props.closeModal}
         size="lg"
-        centered
-      >
+        centered>
         <div id="invoiceCapture">
           <div className="d-flex flex-row justify-content-between align-items-start bg-light w-100 p-4">
             <div className="w-100">
@@ -52,7 +115,7 @@ const InvoiceModal = (props) => {
               <h6 className="fw-bold mt-1 mb-2">Amount&nbsp;Due:</h6>
               <h5 className="fw-bold text-secondary">
                 {" "}
-                {props.currency} {props.total}
+                {props.info.currency} {total}
               </h5>
             </div>
           </div>
@@ -75,6 +138,36 @@ const InvoiceModal = (props) => {
                 <div>{props.info.dateOfIssue || ""}</div>
               </Col>
             </Row>
+            {/* <Table className="mb-0">
+              <thead>
+                <tr>
+                  <th>QTY</th>
+                  <th>DESCRIPTION</th>
+                  <th className="text-end">PRICE</th>
+                  <th className="text-end">AMOUNT</th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.items?.map((item, i) => {
+                  const modalItem = globalItems.find((gitem) => gitem.itemId === item)
+                 
+                  return (
+                    <tr id={i} key={i}>
+                      <td style={{ width: "70px" }}>{modalItem?.itemQuantity}</td>
+                      <td>
+                        {item.itemName} - {modalItem?.itemDescription}
+                      </td>
+                      <td className="text-end" style={{ width: "100px" }}>
+                        {props.currency} {modalItem?.itemPrice}
+                      </td>
+                      <td className="text-end" style={{ width: "100px" }}>
+                        {props.currency} {modalItem?.itemPrice * modalItem?.itemQuantity}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table> */}
             <Table className="mb-0">
               <thead>
                 <tr>
@@ -85,22 +178,42 @@ const InvoiceModal = (props) => {
                 </tr>
               </thead>
               <tbody>
-                {props.items.map((item, i) => {
-                  return (
-                    <tr id={i} key={i}>
-                      <td style={{ width: "70px" }}>{item.itemQuantity}</td>
-                      <td>
-                        {item.itemName} - {item.itemDescription}
-                      </td>
-                      <td className="text-end" style={{ width: "100px" }}>
-                        {props.currency} {item.itemPrice}
-                      </td>
-                      <td className="text-end" style={{ width: "100px" }}>
-                        {props.currency} {item.itemPrice * item.itemQuantity}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {/* Loop through grouped items */}
+                {Object.entries(groupedItems).map(([groupName, groupItems]) => (
+                  <React.Fragment key={groupName}>
+                    {groupName !== "Ungrouped" && ( // Show header for non-Ungrouped groups
+                      <tr className="fw-bold text-secondary">
+                        <td colSpan="4" className="text-center">
+                          {groupName}
+                        </td>
+                      </tr>
+                    )}
+                    {/* Loop through items in the current group */}
+                    {groupItems.map((item, i) => (
+                      <>
+                        <tr id={i} key={i}>
+                          <td style={{ width: "70px" }}>
+                            {item?.itemQuantity}
+                          </td>
+                          <td
+                            style={{
+                              fontStyle:
+                                item.itemGroup == "" ? "normal" : "italic",
+                            }}>
+                            {item.itemName} - {item?.itemDescription}
+                          </td>
+                          <td className="text-end" style={{ width: "100px" }}>
+                            {props.currency} {item?.itemPrice}
+                          </td>
+                          <td className="text-end" style={{ width: "100px" }}>
+                            {props.currency}{" "}
+                            {item?.itemPrice * item?.itemQuantity}
+                          </td>
+                        </tr>
+                      </>
+                    ))}
+                  </React.Fragment>
+                ))}
               </tbody>
             </Table>
             <Table>
@@ -116,7 +229,7 @@ const InvoiceModal = (props) => {
                     TAX
                   </td>
                   <td className="text-end" style={{ width: "100px" }}>
-                    {props.currency} {props.taxAmmount}
+                    {props.info.currency} {taxAmount}
                   </td>
                 </tr>
                 {props.discountAmmount !== 0.0 && (
@@ -126,7 +239,7 @@ const InvoiceModal = (props) => {
                       DISCOUNT
                     </td>
                     <td className="text-end" style={{ width: "100px" }}>
-                      {props.currency} {props.discountAmmount}
+                      {props.info.currency} {discountAmount}
                     </td>
                   </tr>
                 )}
@@ -136,7 +249,7 @@ const InvoiceModal = (props) => {
                     TOTAL
                   </td>
                   <td className="text-end" style={{ width: "100px" }}>
-                    {props.currency} {props.total}
+                    {props.info.currency} {total}
                   </td>
                 </tr>
               </tbody>
@@ -154,8 +267,7 @@ const InvoiceModal = (props) => {
               <Button
                 variant="primary"
                 className="d-block w-100"
-                onClick={GenerateInvoice}
-              >
+                onClick={GenerateInvoice}>
                 <BiPaperPlane
                   style={{ width: "15px", height: "15px", marginTop: "-3px" }}
                   className="me-2"
@@ -167,8 +279,7 @@ const InvoiceModal = (props) => {
               <Button
                 variant="outline-primary"
                 className="d-block w-100 mt-3 mt-md-0"
-                onClick={GenerateInvoice}
-              >
+                onClick={GenerateInvoice}>
                 <BiCloudDownload
                   style={{ width: "16px", height: "16px", marginTop: "-3px" }}
                   className="me-2"
